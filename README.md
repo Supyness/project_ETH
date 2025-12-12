@@ -2,12 +2,12 @@
 
 This project contains a Solidity smart contract plus a lightweight HTML front‑end that implements the mechanics described in the prompt:
 
-- Базовый контракт `ColorGridGame` создаёт поле 10×10.
-- Цена старта `0.01 ETH`, увеличивается на `3%` после каждого хода.
-- Платёж делится `80%` → time bank, `20%` → color bank.
-- Time bank доступен последнему игроку, если прошло больше `10 минут` без закрасок.
-- Color bank делится между всей “командой цвета” пропорционально числу их ходов, после того как всё поле закрашено одним цветом (pull-модель через `claimColorBank` + `withdrawRewards`).
-- Для демо есть контракт `ColorGridGameTest` c полем `2×2` и таймером `5 секунд` — удобно для лабораторных проверок.
+- The base contract `ColorGridGame` creates a 10x10 grid.
+- The starting price is `0.01 ETH`, increasing by `3%` after each move.
+- The payment is divided 80% → time bank, 20% → color bank.
+- The time bank is available to the last player if more than `10 minutes` have passed without any coloring.
+- The color bank is divided among the entire “color team” proportionally to the number of their moves, after the entire field is painted with one color (pull model via `claimColorBank` + `withdrawRewards`).
+- For the demo, there is a `ColorGridGameTest` contract with a `2x2` field and a `5 seconds` timer - convenient for lab tests.
 
 ### Prerequisites
 
@@ -27,7 +27,7 @@ npm test             # run the unit tests
 npm run deploy       # deploy to Sepolia (configure .env first)
 ```
 
-Deployment outputs the on-chain address. Replace `CONTRACT_ADDRESS` in `frontend/index.html` with that value before using the UI. Чтобы задеплоить тестовую версию на локальную сеть, можно указать имя контракта:
+Deployment outputs the on-chain address. Replace `CONTRACT_ADDRESS` in `frontend/index.html` with that value before using the UI. To deploy a test version to a local network, you can specify the contract name:
 
 ```bash
 CONTRACT_NAME=ColorGridGameTest npx hardhat run scripts/deploy.ts --network localhost
@@ -38,20 +38,20 @@ CONTRACT_NAME=ColorGridGameTest npx hardhat run scripts/deploy.ts --network loca
 The `frontend/index.html` file is a static MVP:
 
 1. Serve it locally (e.g. `npx serve frontend` or via any static host).
-2. Open it in a browser с установленным MetaMask (или мобильный MetaMask-браузер).
-3. Нажмите **Connect Wallet** — фронт прочитает размер сетки/кол-во цветов прямо из контракта, так что UI сам адаптируется под 10×10 или 3×3.
-4. Выберите цвет, кликните по ячейке → отправится транзакция `paintCell`.
-5. Кнопки “Claim … / Withdraw …” вызывают соответствующие методы, `roundId` для color bank можно подсмотреть через события или `colorWins`.
+2. Open it in a browser with MetaMask installed (or the MetaMask mobile browser).
+3. Click **Connect Wallet** - the frontend will read the grid size/number of colors directly from the contract, so the UI itself will adapt to 10x10 or 3x3.
+4. Select a color, click on the cell → the `paintCell` transaction will be sent.
+5. The “Claim … / Withdraw …” buttons call the corresponding methods, the `roundId` for the color bank can be found through events or `colorWins`.
 
 ### Contract overview
 
-`contracts/ColorGridGame.sol` содержит базовый абстрактный контракт `ColorGridGameBase` с параметрами сетки и конкретные реализации:
+`contracts/ColorGridGame.sol` contains the base abstract contract `ColorGridGameBase` with grid parameters and concrete implementations:
 
-- `paintCell(cellIndex, colorId)` проверяет цену, обновляет сетку, делит платёж и пишет статистику по раундам.
-- `claimTimeBank()` начисляет банк времени последнему игроку (порог — `idleThreshold`, задаётся в конструкторе конкретного контракта).
-- `claimColorBank(roundId)` выдаёт долю банка цвета для победившего цвета текущего раунда.
-- `withdrawRewards()` отправляет накопленные выигрыши.
-- `ColorGridGame` → параметры 10×10 / 10 минут, `ColorGridGameTest` → 3×3 / 5 секунд.
+- `paintCell(cellIndex, colorId)` checks the price, updates the grid, divides the payment and writes statistics for the rounds.
+- `claimTimeBank()` credits the time bank to the last player (the threshold is `idleThreshold`, set in the constructor of a specific contract).
+- `claimColorBank(roundId)` returns the color bank share for the winning color of the current round.
+- `withdrawRewards()` sends accumulated winnings.
+- `ColorGridGame` → parameters 10×10 / 10 minutes, `ColorGridGameTest` → 3×3 / 5 seconds.
 
 The board resets automatically after a color victory; the price keeps growing globally to make late moves more expensive, exactly as described.
 
