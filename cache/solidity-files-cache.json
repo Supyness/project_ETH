@@ -1,0 +1,43 @@
+{
+  "_format": "hh-sol-cache-2",
+  "files": {
+    "/Users/supy/Downloads/project_10_10/contracts/ColorGridGame.sol": {
+      "lastModificationDate": 1765208811948,
+      "contentHash": "46def879662544820854f8c7b97d78bf",
+      "sourceName": "contracts/ColorGridGame.sol",
+      "solcConfig": {
+        "version": "0.8.23",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [],
+      "versionPragmas": [
+        "^0.8.23"
+      ],
+      "artifacts": [
+        "ColorGridGame",
+        "ColorGridGameBase",
+        "ColorGridGameTest"
+      ]
+    }
+  }
+}

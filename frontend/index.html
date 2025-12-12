@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Color Grid Game MVP</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin-top: 0;
+      }
+      .grid {
+        display: grid;
+        gap: 4px;
+        margin: 16px 0;
+      }
+      .cell {
+        width: 32px;
+        height: 32px;
+        border: 1px solid #1e293b;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: transform 0.1s ease;
+      }
+      .cell:hover {
+        transform: scale(1.05);
+      }
+      button {
+        background: #3b82f6;
+        border: none;
+        color: white;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-size: 14px;
+        cursor: pointer;
+        margin-right: 8px;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+      .panel {
+        margin-bottom: 16px;
+        padding: 16px;
+        background: #1e293b;
+        border-radius: 8px;
+      }
+      .colors {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .color-choice {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid #334155;
+        cursor: pointer;
+      }
+      .color-choice.selected {
+        border-color: #fbbf24;
+        box-shadow: 0 0 6px rgba(251, 191, 36, 0.8);
+      }
+      input {
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        color: #e2e8f0;
+        padding: 6px;
+        margin-right: 8px;
+      }
+      .log {
+        font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        font-size: 13px;
+        white-space: pre-line;
+        background: #0f172a;
+        padding: 12px;
+        border-radius: 6px;
+        min-height: 56px;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.9.0/dist/ethers.umd.min.js"></script>
+  </head>
+  <body>
+    <h1>Color Grid Game MVP</h1>
+    <div class="panel">
+      <button id="connectBtn">Connect Wallet</button>
+      <span id="status">Disconnected</span>
+    </div>
+    <div class="panel">
+      <div>Current Price: <strong id="price">-</strong> ETH</div>
+      <div>Time Bank: <strong id="timeBank">-</strong> ETH</div>
+      <div>Color Bank: <strong id="colorBank">-</strong> ETH</div>
+      <div>Last Paint: <strong id="lastPaint">Never</strong></div>
+      <div>Current Round: <strong id="currentRound">-</strong></div>
+      <div>Last Color Win: <strong id="lastWin">-</strong></div>
+    </div>
+    <div class="panel">
+      <h3>Select Color</h3>
+      <div class="colors" id="colorChoices"></div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="panel">
+      <h3>Claims</h3>
+      <div>
+        <button id="claimTimeBtn">Claim Time Bank</button>
+      </div>
+      <div style="margin-top: 12px;">
+        <input id="roundInput" placeholder="Round ID" type="number" min="1" />
+        <button id="claimColorBtn">Claim Color Bank</button>
+      </div>
+      <div style="margin-top: 12px;">
+        <button id="withdrawBtn">Withdraw Rewards</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Log</h3>
+      <div class="log" id="log"></div>
+    </div>
+    <script type="text/javascript">
+      const CONTRACT_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+      const CONTRACT_ABI = [
+        "function currentPrice() view returns (uint256)",
+        "function timeBank() view returns (uint256)",
+        "function colorBank() view returns (uint256)",
+        "function lastPaintTimestamp() view returns (uint256)",
+        "function gridSide() view returns (uint8)",
+        "function colorCount() view returns (uint8)",
+        "function currentRound() view returns (uint256)",
+        "function lastColorWinRound() view returns (uint256)",
+        "function paintCell(uint8,uint8) payable",
+        "function getBoard() view returns (uint8[])",
+        "function claimTimeBank()",
+        "function claimColorBank(uint256)",
+        "function withdrawRewards()",
+        "function claimableBalance(address) view returns (uint256)"
+      ];
+
+      const COLORS = [
+        "#ef4444",
+        "#f97316",
+        "#facc15",
+        "#84cc16",
+        "#22d3ee",
+        "#0ea5e9",
+        "#6366f1",
+        "#a855f7",
+        "#ec4899",
+        "#f472b6"
+      ];
+
+      const gridElement = document.getElementById("grid");
+      const priceElement = document.getElementById("price");
+      const timeBankElement = document.getElementById("timeBank");
+      const colorBankElement = document.getElementById("colorBank");
+      const lastPaintElement = document.getElementById("lastPaint");
+      const currentRoundElement = document.getElementById("currentRound");
+      const lastWinElement = document.getElementById("lastWin");
+      const logElement = document.getElementById("log");
+      const statusElement = document.getElementById("status");
+      const colorChoicesElement = document.getElementById("colorChoices");
+      const roundInput = document.getElementById("roundInput");
+
+      let provider;
+      let signer;
+      let contract;
+      let selectedColor = 0;
+      let gridSide = 10;
+      let gridCells = gridSide * gridSide;
+      let contractColorCount = COLORS.length;
+      let activeColors = COLORS.slice();
+      let connectedAccount = "";
+      let lastKnownWinRound = 0;
+      let lastLoggedWinRound = 0;
+
+      function log(message) {
+        logElement.textContent = `${message}\n${logElement.textContent}`;
+      }
+
+      async function getConnectedAccount() {
+        if (connectedAccount) {
+          return connectedAccount;
+        }
+        if (signer) {
+          connectedAccount = await signer.getAddress();
+          return connectedAccount;
+        }
+        return null;
+      }
+
+      function formatEth(value) {
+        try {
+          return ethers.formatEther(value);
+        } catch (err) {
+          return value?.toString?.() ?? String(value);
+        }
+      }
+
+      async function connectWallet() {
+        if (!window.ethereum) {
+          log("MetaMask not detected");
+          return;
+        }
+
+        try {
+          await window.ethereum.request({
+            method: "wallet_requestPermissions",
+            params: [{ eth_accounts: {} }]
+          });
+
+          const accounts = await window.ethereum.request({
+            method: "eth_requestAccounts"
+          });
+
+          provider = new ethers.BrowserProvider(window.ethereum);
+          signer = await provider.getSigner();
+          contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+          connectedAccount = accounts[0];
+          log("Wallet connected: " + connectedAccount);
+          statusElement.textContent = `Connected: ${connectedAccount}`;
+          await loadContractConfig();
+          await refreshState();
+        } catch (err) {
+          console.error("Connection failed:", err);
+          log("Connection failed: " + err.message);
+        }
+      }
+
+      async function loadContractConfig() {
+        if (!contract) return;
+        const [side, count] = await Promise.all([contract.gridSide(), contract.colorCount()]);
+        gridSide = Number(side);
+        gridCells = gridSide * gridSide;
+        contractColorCount = Number(count);
+        activeColors = COLORS.slice(0, contractColorCount);
+        if (selectedColor >= contractColorCount) {
+          selectedColor = 0;
+        }
+        renderColorChoices();
+      }
+
+      async function refreshState() {
+        if (!contract) return;
+        const [price, timeBank, colorBank, lastTs, board, round, lastWin] = await Promise.all([
+          contract.currentPrice(),
+          contract.timeBank(),
+          contract.colorBank(),
+          contract.lastPaintTimestamp(),
+          contract.getBoard(),
+          contract.currentRound(),
+          contract.lastColorWinRound()
+        ]);
+
+        priceElement.textContent = ethers.formatEther(price);
+        timeBankElement.textContent = ethers.formatEther(timeBank);
+        colorBankElement.textContent = ethers.formatEther(colorBank);
+        lastPaintElement.textContent = Number(lastTs) === 0
+          ? "Never"
+          : new Date(Number(lastTs) * 1000).toLocaleTimeString();
+
+        const normalizedBoard = board.map((value) => Number(value));
+        const currentRoundNumber = Number(round);
+        const lastWinNumber = Number(lastWin);
+        currentRoundElement.textContent = currentRoundNumber.toString();
+        if (lastWinNumber > 0) {
+          lastKnownWinRound = lastWinNumber;
+          lastWinElement.textContent = lastWinNumber.toString();
+          if (roundInput) {
+            roundInput.value = String(lastWinNumber);
+          }
+          if (lastLoggedWinRound !== lastWinNumber) {
+            log(`Color round ${lastWinNumber} completed. Claim rewards for this color!`);
+            lastLoggedWinRound = lastWinNumber;
+          }
+        } else {
+          lastWinElement.textContent = "-";
+          if (roundInput && !roundInput.value) {
+            roundInput.value = "";
+          }
+        }
+        renderBoard(normalizedBoard);
+      }
+
+      function renderBoard(board) {
+        gridElement.innerHTML = "";
+        gridElement.style.gridTemplateColumns = `repeat(${gridSide}, 32px)`;
+        board.forEach((colorId, idx) => {
+          const cell = document.createElement("div");
+          cell.className = "cell";
+          if (colorId !== 255) {
+            cell.style.background = activeColors[colorId] || COLORS[colorId] || "#1e293b";
+          } else {
+            cell.style.background = "#0f172a";
+          }
+          cell.addEventListener("click", () => paint(idx));
+          gridElement.appendChild(cell);
+        });
+      }
+
+      async function paint(cellIndex) {
+        if (!contract) {
+          log("Connect wallet first");
+          return;
+        }
+        try {
+          const price = await contract.currentPrice();
+          const tx = await contract.paintCell(cellIndex, selectedColor, { value: price });
+          log(`Painting cell ${cellIndex} with color ${selectedColor}...`);
+          await tx.wait();
+          log("Paint confirmed");
+          await refreshState();
+        } catch (error) {
+          log(error.reason || error.message || "Transaction failed");
+        }
+      }
+
+      async function claimTimeBank() {
+        if (!contract) return;
+        try {
+          const account = await getConnectedAccount();
+          if (!account) {
+            log("Connect wallet first");
+            return;
+          }
+          const before = await contract.claimableBalance(account);
+          const tx = await contract.claimTimeBank();
+          log("Claiming time bank...");
+          await tx.wait();
+          const after = await contract.claimableBalance(account);
+          const earned = after - before;
+          if (earned > 0n) {
+            log(`Time bank claim successful (+${formatEth(earned)} ETH)`);
+          } else {
+            log("Time bank claim successful (no rewards)");
+          }
+          await refreshState();
+        } catch (error) {
+          log(error.reason || error.message);
+        }
+      }
+
+      async function claimColorBank() {
+        if (!contract) return;
+        if (!roundInput || !roundInput.value) {
+          log("Round ID required");
+          return;
+        }
+        try {
+          const account = await getConnectedAccount();
+          if (!account) {
+            log("Connect wallet first");
+            return;
+          }
+          const before = await contract.claimableBalance(account);
+          const roundId = BigInt(roundInput.value);
+          const tx = await contract.claimColorBank(roundId);
+          log(`Claiming color bank for round ${roundId.toString()}...`);
+          await tx.wait();
+          const after = await contract.claimableBalance(account);
+          const earned = after - before;
+          if (earned > 0n) {
+            log(`Color bank claim successful (+${formatEth(earned)} ETH)`);
+          } else {
+            log("Color bank claim successful (no rewards)");
+          }
+          await refreshState();
+        } catch (error) {
+          log(error.reason || error.message);
+        }
+      }
+
+      async function withdrawRewards() {
+        if (!contract) return;
+        try {
+          const account = await getConnectedAccount();
+          if (!account) {
+            log("Connect wallet first");
+            return;
+          }
+          const claimable = await contract.claimableBalance(account);
+          if (claimable === 0n) {
+            log("Nothing to withdraw");
+            return;
+          }
+          const tx = await contract.withdrawRewards();
+          log("Withdrawing rewards...");
+          await tx.wait();
+          log(`Rewards withdrawn (${formatEth(claimable)} ETH)`);
+          await refreshState();
+        } catch (error) {
+          log(error.reason || error.message);
+        }
+      }
+
+      function renderColorChoices() {
+        colorChoicesElement.innerHTML = "";
+        activeColors.forEach((color, idx) => {
+          const btn = document.createElement("div");
+          btn.className = "color-choice";
+          btn.style.background = color;
+          if (idx === selectedColor) {
+            btn.classList.add("selected");
+          }
+          btn.addEventListener("click", () => {
+            selectedColor = idx;
+            renderColorChoices();
+          });
+          colorChoicesElement.appendChild(btn);
+        });
+      }
+
+      document.getElementById("connectBtn").addEventListener("click", connectWallet);
+      document.getElementById("claimTimeBtn").addEventListener("click", claimTimeBank);
+      document.getElementById("claimColorBtn").addEventListener("click", claimColorBank);
+      document.getElementById("withdrawBtn").addEventListener("click", withdrawRewards);
+
+      renderColorChoices();
+      renderBoard(Array(gridCells).fill(255));
+    </script>
+  </body>
+</html>
