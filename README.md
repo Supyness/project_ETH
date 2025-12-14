@@ -54,11 +54,3 @@ The `frontend/index.html` file is a static MVP:
 - `ColorGridGame` → parameters 10×10 / 10 minutes, `ColorGridGameTest` → 3×3 / 5 seconds.
 
 The board resets automatically after a color victory; the price keeps growing globally to make late moves more expensive, exactly as described.
-
-### Next steps
-
-This skeleton intentionally keeps gas usage and UX unoptimized. Potential follow-ups:
-
-- Emit richer events and build a subgraph/off-chain indexer for a real-time leaderboard.
-- Limit the max price and/or introduce epochs to prevent runaway cost.
-- Swap the vanilla HTML UI for a full React/Next.js front-end with viem/wagmi hooks, server-side caching, etc.
