@@ -54,6 +54,7 @@ abstract contract ColorGridGameBase {
     event TimeBankReady(address indexed winner, uint256 reward);
     event ColorBankTriggered(uint256 indexed roundId, uint8 indexed colorId, uint256 reward, uint256 totalStrokes);
     event RewardsWithdrawn(address indexed account, uint256 amount);
+    event BoardCleared(address indexed caller);
 
     constructor(uint8 _gridSide, uint8 _colorCount, uint256 _idleThreshold) {
         require(_gridSide > 0, "Grid side required");
@@ -174,6 +175,19 @@ abstract contract ColorGridGameBase {
 
     function getColorFillCounts() external view returns (uint16[] memory) {
         return _colorFillCounts;
+    }
+
+    function clearBoard() external {
+        bool hasPaint;
+        for (uint256 i = 0; i < _cellColors.length; i++) {
+            if (_cellColors[i] != EMPTY_COLOR) {
+                hasPaint = true;
+                break;
+            }
+        }
+
+        _resetBoard();
+        emit BoardCleared(msg.sender);
     }
 
     function _handleColorWin(uint8 winningColor) private {

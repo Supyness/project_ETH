@@ -106,6 +106,9 @@
     </div>
     <div class="grid" id="grid"></div>
     <div class="panel">
+      <button id="clearBoardBtn">Clear Board</button>
+    </div>
+    <div class="panel">
       <h3>Claims</h3>
       <div>
         <button id="claimTimeBtn">Claim Time Bank</button>
@@ -138,7 +141,8 @@
         "function claimTimeBank()",
         "function claimColorBank(uint256)",
         "function withdrawRewards()",
-        "function claimableBalance(address) view returns (uint256)"
+        "function claimableBalance(address) view returns (uint256)",
+        "function clearBoard()"
       ];
 
       const COLORS = [
@@ -398,6 +402,19 @@
         }
       }
 
+      async function clearBoard() {
+        if (!contract) {
+          return;
+        }
+        try {
+          const tx = await contract.clearBoard();
+          await tx.wait();
+          await refreshState();
+        } catch (error) {
+          log(error.reason || error.message);
+        }
+      }
+
       function renderColorChoices() {
         colorChoicesElement.innerHTML = "";
         activeColors.forEach((color, idx) => {
@@ -419,6 +436,7 @@
       document.getElementById("claimTimeBtn").addEventListener("click", claimTimeBank);
       document.getElementById("claimColorBtn").addEventListener("click", claimColorBank);
       document.getElementById("withdrawBtn").addEventListener("click", withdrawRewards);
+      document.getElementById("clearBoardBtn").addEventListener("click", clearBoard);
 
       renderColorChoices();
       renderBoard(Array(gridCells).fill(255));
