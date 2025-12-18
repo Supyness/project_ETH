@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.23;
 
+import "hardhat/console.sol";
+
 /**
  * @title ColorGridGameBase
  * @dev Core logic for the painting game. Concrete contracts configure grid size
@@ -31,7 +33,12 @@ abstract contract ColorGridGameBase {
     uint256 public lastColorWinRound;
 
     uint8[] private _cellColors;
+    uint256[] private _cellVersions;
     uint16[] private _colorFillCounts;
+    uint256[] private _colorFillVersions;
+    uint256 private _boardVersion = 1;
+    uint256 private _colorFillVersion = 1;
+    uint16 private _filledCells;
 
     mapping(uint256 => mapping(uint8 => mapping(address => uint256))) public strokesPerRound;
     mapping(uint256 => mapping(uint8 => uint256)) public totalStrokesPerRound;
@@ -67,10 +74,9 @@ abstract contract ColorGridGameBase {
         idleThreshold = _idleThreshold;
 
         _cellColors = new uint8[](gridCells);
-        for (uint256 i = 0; i < gridCells; i++) {
-            _cellColors[i] = EMPTY_COLOR;
-        }
+        _cellVersions = new uint256[](gridCells);
         _colorFillCounts = new uint16[](_colorCount);
+        _colorFillVersions = new uint256[](_colorCount);
     }
 
     modifier validCell(uint8 cellIndex) {
@@ -98,16 +104,23 @@ abstract contract ColorGridGameBase {
     {
         require(msg.value == currentPrice, "Incorrect payment");
 
-        uint8 previousColor = _cellColors[cellIndex];
-        if (previousColor == colorId) {
+        (uint8 previousColor, bool wasPainted) = _cellState(cellIndex);
+        if (wasPainted && previousColor == colorId) {
             revert("Already painted with this color");
         }
 
         _cellColors[cellIndex] = colorId;
-        if (previousColor != EMPTY_COLOR) {
-            _colorFillCounts[previousColor] -= 1;
+        _cellVersions[cellIndex] = _boardVersion;
+
+        if (!wasPainted) {
+            _filledCells += 1;
+        } else if (previousColor != EMPTY_COLOR) {
+            uint16 prevCount = _getColorFillCount(previousColor);
+            _setColorFillCount(previousColor, prevCount - 1);
         }
-        _colorFillCounts[colorId] += 1;
+
+        uint16 updatedCount = _getColorFillCount(colorId) + 1;
+        _setColorFillCount(colorId, updatedCount);
 
         uint256 timeShare = (msg.value * TIME_BANK_SHARE_BPS) / BASIS_POINTS;
         uint256 colorShare = msg.value - timeShare;
@@ -124,7 +137,7 @@ abstract contract ColorGridGameBase {
 
         _increasePrice();
 
-        if (_colorFillCounts[colorId] == gridCells) {
+        if (updatedCount == gridCells) {
             _handleColorWin(colorId);
         }
     }
@@ -169,22 +182,28 @@ abstract contract ColorGridGameBase {
         emit RewardsWithdrawn(msg.sender, amount);
     }
 
-    function getBoard() external view returns (uint8[] memory) {
-        return _cellColors;
+    function getBoard() external view returns (uint8[] memory board) {
+        board = new uint8[](_cellColors.length);
+        for (uint256 i = 0; i < board.length; i++) {
+            if (_cellVersions[i] == _boardVersion) {
+                board[i] = _cellColors[i];
+            } else {
+                board[i] = EMPTY_COLOR;
+            }
+        }
     }
 
-    function getColorFillCounts() external view returns (uint16[] memory) {
-        return _colorFillCounts;
+    function getColorFillCounts() external view returns (uint16[] memory counts) {
+        counts = new uint16[](_colorFillCounts.length);
+        for (uint256 c = 0; c < counts.length; c++) {
+            if (_colorFillVersions[c] == _colorFillVersion) {
+                counts[c] = _colorFillCounts[c];
+            }
+        }
     }
 
     function clearBoard() external {
-        bool hasPaint;
-        for (uint256 i = 0; i < _cellColors.length; i++) {
-            if (_cellColors[i] != EMPTY_COLOR) {
-                hasPaint = true;
-                break;
-            }
-        }
+        require(_filledCells > 0, "Board already empty");
 
         _resetBoard();
         emit BoardCleared(msg.sender);
@@ -213,16 +232,31 @@ abstract contract ColorGridGameBase {
     }
 
     function _resetBoard() private {
-        for (uint256 i = 0; i < _cellColors.length; i++) {
-            _cellColors[i] = EMPTY_COLOR;
-        }
-        for (uint256 c = 0; c < _colorFillCounts.length; c++) {
-            _colorFillCounts[c] = 0;
-        }
+        _boardVersion += 1;
+        _colorFillVersion += 1;
+        _filledCells = 0;
     }
 
     function _increasePrice() private {
         currentPrice = (currentPrice * (BASIS_POINTS + PRICE_INCREASE_BPS)) / BASIS_POINTS;
+    }
+
+    function _cellState(uint256 cellIndex) private view returns (uint8 colorId, bool painted) {
+        console.log("1");
+        painted = _cellVersions[cellIndex] == _boardVersion;
+        colorId = painted ? _cellColors[cellIndex] : EMPTY_COLOR;
+    }
+
+    function _getColorFillCount(uint8 colorId) private view returns (uint16) {
+        if (_colorFillVersions[colorId] != _colorFillVersion) {
+            return 0;
+        }
+        return _colorFillCounts[colorId];
+    }
+
+    function _setColorFillCount(uint8 colorId, uint16 value) private {
+        _colorFillVersions[colorId] = _colorFillVersion;
+        _colorFillCounts[colorId] = value;
     }
 }
 
